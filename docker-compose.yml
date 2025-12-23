@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  teknisi-ip-lookup:
+    build: .
+    container_name: teknisi-ip-lookup
+    ports:
+      - "7351:7351"
+    restart: unless-stopped
