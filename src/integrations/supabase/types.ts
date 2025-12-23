@@ -14,7 +14,127 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      ip_status_changes: {
+        Row: {
+          detected_at: string
+          id: string
+          ip_address: string
+          is_notified: boolean
+          new_status: string
+          previous_status: string | null
+          scheduled_scan_id: string | null
+        }
+        Insert: {
+          detected_at?: string
+          id?: string
+          ip_address: string
+          is_notified?: boolean
+          new_status: string
+          previous_status?: string | null
+          scheduled_scan_id?: string | null
+        }
+        Update: {
+          detected_at?: string
+          id?: string
+          ip_address?: string
+          is_notified?: boolean
+          new_status?: string
+          previous_status?: string | null
+          scheduled_scan_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ip_status_changes_scheduled_scan_id_fkey"
+            columns: ["scheduled_scan_id"]
+            isOneToOne: false
+            referencedRelation: "scheduled_scans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scan_results: {
+        Row: {
+          active_hosts: number
+          created_at: string
+          id: string
+          results: Json
+          scan_duration_ms: number | null
+          scan_type: string
+          scheduled_scan_id: string | null
+          target: string
+          total_hosts: number
+        }
+        Insert: {
+          active_hosts?: number
+          created_at?: string
+          id?: string
+          results?: Json
+          scan_duration_ms?: number | null
+          scan_type: string
+          scheduled_scan_id?: string | null
+          target: string
+          total_hosts?: number
+        }
+        Update: {
+          active_hosts?: number
+          created_at?: string
+          id?: string
+          results?: Json
+          scan_duration_ms?: number | null
+          scan_type?: string
+          scheduled_scan_id?: string | null
+          target?: string
+          total_hosts?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_results_scheduled_scan_id_fkey"
+            columns: ["scheduled_scan_id"]
+            isOneToOne: false
+            referencedRelation: "scheduled_scans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduled_scans: {
+        Row: {
+          created_at: string
+          cron_expression: string
+          id: string
+          is_active: boolean
+          last_run_at: string | null
+          name: string
+          next_run_at: string | null
+          scan_type: string
+          target: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          cron_expression?: string
+          id?: string
+          is_active?: boolean
+          last_run_at?: string | null
+          name: string
+          next_run_at?: string | null
+          scan_type?: string
+          target: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          cron_expression?: string
+          id?: string
+          is_active?: boolean
+          last_run_at?: string | null
+          name?: string
+          next_run_at?: string | null
+          scan_type?: string
+          target?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

@@ -6,6 +6,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import Landing from "./pages/Landing";
 import Scanner from "./pages/Scanner";
+import PortScanner from "./pages/PortScanner";
+import ScheduledScans from "./pages/ScheduledScans";
 import History from "./pages/History";
 import About from "./pages/About";
 import NotFound from "./pages/NotFound";
@@ -22,6 +24,8 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/scanner" element={<Scanner />} />
+            <Route path="/port-scanner" element={<PortScanner />} />
+            <Route path="/scheduled" element={<ScheduledScans />} />
             <Route path="/history" element={<History />} />
             <Route path="/about" element={<About />} />
             <Route path="*" element={<NotFound />} />
