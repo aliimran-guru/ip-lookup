@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,11 +19,8 @@ import {
   Search,
   Play,
   Square,
-  Download,
   FileText,
   FileSpreadsheet,
-  CheckCircle,
-  XCircle,
   Clock,
   Loader2,
   Network,
@@ -34,12 +31,19 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ScanResult,
   ScanHistory,
-  parseIPRange,
   generateId,
   saveScanHistory,
   formatDuration,
 } from "@/lib/scanner";
 import { exportToCSV, exportToPDF } from "@/lib/export";
+import { supabase } from "@/integrations/supabase/client";
+
+interface EdgeFunctionResult {
+  ip: string;
+  status: "active" | "inactive";
+  responseTime?: number;
+  hostname?: string;
+}
 
 export default function Scanner() {
   const { toast } = useToast();
@@ -51,63 +55,65 @@ export default function Scanner() {
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<ScanResult[]>([]);
   const [currentScan, setCurrentScan] = useState<ScanHistory | null>(null);
-  const [scanStartTime, setScanStartTime] = useState<number>(0);
-
-  const simulatePing = async (ip: string): Promise<ScanResult> => {
-    // Simulate network latency
-    const delay = Math.random() * 200 + 50;
-    await new Promise((resolve) => setTimeout(resolve, delay));
-
-    // Simulate ~60% active IPs for demo
-    const isActive = Math.random() > 0.4;
-    
-    return {
-      ip,
-      status: isActive ? "active" : "inactive",
-      responseTime: isActive ? Math.floor(Math.random() * 50 + 1) : undefined,
-      hostname: isActive && Math.random() > 0.5 ? `device-${ip.split(".").pop()}` : undefined,
-      timestamp: Date.now(),
-    };
-  };
+  const abortRef = useRef(false);
 
   const startScan = useCallback(async () => {
-    try {
-      const input = inputMode === "cidr" ? cidr : `${startIp}-${endIp}`;
-      const ips = parseIPRange(input);
+    const target = inputMode === "cidr" ? cidr : `${startIp}-${endIp}`;
+    
+    if (!target.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid IP range",
+        variant: "destructive",
+      });
+      return;
+    }
 
-      if (ips.length === 0) {
-        toast({
-          title: "Error",
-          description: "No valid IPs to scan",
-          variant: "destructive",
-        });
+    setIsScanning(true);
+    setProgress(0);
+    setResults([]);
+    abortRef.current = false;
+    const startTime = Date.now();
+
+    try {
+      // Simulate progress while waiting for edge function
+      const progressInterval = setInterval(() => {
+        if (!abortRef.current) {
+          setProgress((prev) => Math.min(prev + 2, 90));
+        }
+      }, 100);
+
+      const { data, error } = await supabase.functions.invoke("network-scan", {
+        body: { target },
+      });
+
+      clearInterval(progressInterval);
+      
+      if (abortRef.current) {
         return;
       }
 
-      setIsScanning(true);
-      setProgress(0);
-      setResults([]);
-      const startTime = Date.now();
-      setScanStartTime(startTime);
+      setProgress(100);
 
-      const scanResults: ScanResult[] = [];
+      if (error) throw error;
 
-      for (let i = 0; i < ips.length; i++) {
-        if (!isScanning && i > 0) break; // Check if scan was stopped
+      const scanResults: ScanResult[] = (data.results as EdgeFunctionResult[]).map((r) => ({
+        ip: r.ip,
+        status: r.status,
+        responseTime: r.responseTime,
+        hostname: r.hostname,
+        timestamp: Date.now(),
+      }));
 
-        const result = await simulatePing(ips[i]);
-        scanResults.push(result);
-        setResults([...scanResults]);
-        setProgress(((i + 1) / ips.length) * 100);
-      }
+      setResults(scanResults);
 
       const endTime = Date.now();
       const activeCount = scanResults.filter((r) => r.status === "active").length;
-      
+
       const history: ScanHistory = {
         id: generateId(),
-        startIp: inputMode === "manual" ? startIp : ips[0],
-        endIp: inputMode === "manual" ? endIp : ips[ips.length - 1],
+        startIp: data.results[0]?.ip || startIp,
+        endIp: data.results[data.results.length - 1]?.ip || endIp,
         cidr: inputMode === "cidr" ? cidr : undefined,
         results: scanResults,
         totalScanned: scanResults.length,
@@ -115,7 +121,7 @@ export default function Scanner() {
         inactiveCount: scanResults.length - activeCount,
         startTime,
         endTime,
-        duration: endTime - startTime,
+        duration: data.scanDuration || endTime - startTime,
       };
 
       setCurrentScan(history);
@@ -127,8 +133,8 @@ export default function Scanner() {
       });
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to scan",
+        title: "Scan Failed",
+        description: error instanceof Error ? error.message : "Failed to scan network",
         variant: "destructive",
       });
     } finally {
@@ -137,6 +143,7 @@ export default function Scanner() {
   }, [inputMode, cidr, startIp, endIp, toast]);
 
   const stopScan = () => {
+    abortRef.current = true;
     setIsScanning(false);
     toast({
       title: "Scan Stopped",
@@ -175,7 +182,7 @@ export default function Scanner() {
               <span className="gradient-text">IP Scanner</span>
             </h1>
             <p className="text-muted-foreground">
-              Scan range IP untuk mendeteksi perangkat aktif di jaringan
+              Scan range IP untuk mendeteksi perangkat aktif di jaringan (TCP-based)
             </p>
           </div>
 
@@ -265,7 +272,7 @@ export default function Scanner() {
                     <Progress value={progress} className="h-2" />
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>{results.length} IPs scanned</span>
+                      <span>Connecting to backend...</span>
                     </div>
                   </div>
                 )}
