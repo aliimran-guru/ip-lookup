@@ -1,0 +1,175 @@
+import { ScanHistory, ScanResult } from "./scanner";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+
+export function exportToCSV(history: ScanHistory): void {
+  const headers = ["IP Address", "Status", "Response Time (ms)", "Hostname"];
+  const rows = history.results.map((result) => [
+    result.ip,
+    result.status,
+    result.responseTime?.toString() || "N/A",
+    result.hostname || "N/A",
+  ]);
+
+  const csvContent = [
+    `Teknisi IP Lookup - Scan Report`,
+    `Scan Date: ${new Date(history.startTime).toLocaleString()}`,
+    `Range: ${history.cidr || `${history.startIp} - ${history.endIp}`}`,
+    `Total Scanned: ${history.totalScanned}`,
+    `Active: ${history.activeCount} | Inactive: ${history.inactiveCount}`,
+    `Duration: ${(history.duration / 1000).toFixed(2)}s`,
+    "",
+    headers.join(","),
+    ...rows.map((row) => row.join(",")),
+  ].join("\n");
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.setAttribute("href", url);
+  link.setAttribute(
+    "download",
+    `scan-report-${new Date(history.startTime).toISOString().split("T")[0]}.csv`
+  );
+  link.style.visibility = "hidden";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+export function exportToPDF(history: ScanHistory): void {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  // Header
+  doc.setFillColor(59, 130, 246);
+  doc.rect(0, 0, pageWidth, 40, "F");
+  
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(24);
+  doc.setFont("helvetica", "bold");
+  doc.text("Teknisi IP Lookup", 14, 20);
+  
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "normal");
+  doc.text("Network Scan Report", 14, 30);
+
+  // Reset text color
+  doc.setTextColor(0, 0, 0);
+
+  // Scan Info
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text("Scan Information", 14, 50);
+  
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  
+  const info = [
+    `Date: ${new Date(history.startTime).toLocaleString()}`,
+    `IP Range: ${history.cidr || `${history.startIp} - ${history.endIp}`}`,
+    `Total Scanned: ${history.totalScanned} IPs`,
+    `Duration: ${(history.duration / 1000).toFixed(2)} seconds`,
+  ];
+  
+  info.forEach((line, i) => {
+    doc.text(line, 14, 58 + i * 6);
+  });
+
+  // Statistics
+  doc.setFillColor(240, 240, 240);
+  doc.roundedRect(14, 82, pageWidth - 28, 25, 3, 3, "F");
+  
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  
+  const statsY = 95;
+  const statsSpacing = (pageWidth - 28) / 3;
+  
+  // Active
+  doc.setTextColor(34, 197, 94);
+  doc.text(`${history.activeCount}`, 14 + statsSpacing * 0.5, statsY, { align: "center" });
+  doc.setTextColor(100, 100, 100);
+  doc.setFontSize(9);
+  doc.text("Active", 14 + statsSpacing * 0.5, statsY + 8, { align: "center" });
+  
+  // Inactive
+  doc.setFontSize(12);
+  doc.setTextColor(239, 68, 68);
+  doc.text(`${history.inactiveCount}`, 14 + statsSpacing * 1.5, statsY, { align: "center" });
+  doc.setTextColor(100, 100, 100);
+  doc.setFontSize(9);
+  doc.text("Inactive", 14 + statsSpacing * 1.5, statsY + 8, { align: "center" });
+  
+  // Total
+  doc.setFontSize(12);
+  doc.setTextColor(59, 130, 246);
+  doc.text(`${history.totalScanned}`, 14 + statsSpacing * 2.5, statsY, { align: "center" });
+  doc.setTextColor(100, 100, 100);
+  doc.setFontSize(9);
+  doc.text("Total", 14 + statsSpacing * 2.5, statsY + 8, { align: "center" });
+
+  // Results Table
+  doc.setTextColor(0, 0, 0);
+  
+  const tableData = history.results.map((result) => [
+    result.ip,
+    result.status.toUpperCase(),
+    result.responseTime ? `${result.responseTime}ms` : "N/A",
+    result.hostname || "-",
+  ]);
+
+  autoTable(doc, {
+    startY: 115,
+    head: [["IP Address", "Status", "Response Time", "Hostname"]],
+    body: tableData,
+    theme: "striped",
+    headStyles: {
+      fillColor: [59, 130, 246],
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+    },
+    bodyStyles: {
+      fontSize: 9,
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252],
+    },
+    columnStyles: {
+      0: { cellWidth: 45 },
+      1: { cellWidth: 30, halign: "center" },
+      2: { cellWidth: 35, halign: "center" },
+      3: { cellWidth: "auto" },
+    },
+    didParseCell: (data) => {
+      if (data.column.index === 1 && data.section === "body") {
+        const status = data.cell.raw as string;
+        if (status === "ACTIVE") {
+          data.cell.styles.textColor = [34, 197, 94];
+          data.cell.styles.fontStyle = "bold";
+        } else if (status === "INACTIVE") {
+          data.cell.styles.textColor = [239, 68, 68];
+          data.cell.styles.fontStyle = "bold";
+        }
+      }
+    },
+  });
+
+  // Footer
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(150);
+    doc.text(
+      `Generated by Teknisi IP Lookup | Page ${i} of ${pageCount}`,
+      pageWidth / 2,
+      doc.internal.pageSize.getHeight() - 10,
+      { align: "center" }
+    );
+  }
+
+  doc.save(
+    `scan-report-${new Date(history.startTime).toISOString().split("T")[0]}.pdf`
+  );
+}
